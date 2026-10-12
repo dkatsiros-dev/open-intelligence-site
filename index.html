@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Open Intelligence — a volunteer network for distributed AI research</title>
+  <meta name="description" content="Open Intelligence is a volunteer network where independently owned machines lease research tasks, solve them locally, and return signed results that the network verifies.">
+  <meta name="author" content="Dimitris Katsiros, Dr. Michalis Chatzianastasis">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <canvas id="swarm" class="swarm" aria-hidden="true"></canvas>
+  <nav class="nav" aria-label="Primary">
+    <div class="wrap">
+      <a class="wordmark" href="./">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="10.5" fill="none" stroke="#1d3557" stroke-width="2.5"/><circle cx="16" cy="16" r="3" fill="#1d3557"/></svg>
+        Open Intelligence
+      </a>
+      <ul>
+        <li><a href="#how">How it works</a></li>
+        <li><a href="#network">Network</a></li>
+        <li><a href="#join">Join</a></li>
+        <li><a href="whitepaper.html">Whitepaper</a></li>
+        <li><a href="https://github.com/dkatsiros-dev/open-intelligence-site">GitHub</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main>
+    <section class="hero">
+      <div class="wrap">
+        <p class="eyebrow">Draft v0.1 &middot; invite-only</p>
+        <h1>A volunteer network where independently owned machines do verifiable research together.</h1>
+        <p class="sub">Each node leases a task, solves it on its own hardware, and returns a signed result the network checks before it counts.</p>
+        <div class="actions">
+          <a class="btn" href="whitepaper.html">Read the whitepaper</a>
+          <a class="link-arrow" href="#how">How it works &rarr;</a>
+        </div>
+      </div>
+    </section>
+
+    <section id="what">
+      <div class="wrap split">
+        <header><h2>What it is</h2></header>
+        <div class="prose">
+          <p class="lede">Open Intelligence is an open-source library and a coordination network. Anyone with an invite installs the library, connects a node, and contributes their own compute&nbsp;&mdash; and, in later phases, their own language model&nbsp;&mdash; to shared research problems.</p>
+          <p>A central coordinator keeps the ledger: which problems exist, which work is leased to whom, and which results have been accepted. It never ships runnable code to a node. Tasks, artifacts and contracts are data; a node runs only the handlers it installed, and only a deterministically checked, Ed25519-signed result leaves the machine.</p>
+          <p>The goal is not more raw compute. Distributed computing is largely a solved problem. The open question is epistemic: how a network of untrusted, heterogeneous participants can produce results that are checked, attributable and worth building on.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="why">
+      <div class="wrap split">
+        <header><h2>Why distributed research</h2></header>
+        <div class="prose">
+          <p>Large agent swarms already work when a single organisation owns every machine, every model and every result. What has not been shown is the same loop running on independently owned, untrusted nodes, with problems chosen in the open and results that anyone can re-check.</p>
+          <blockquote>
+            Structured collective intelligence&nbsp;&mdash; decomposition, exploration, cross-pollination, adversarial verification, adaptive allocation&nbsp;&mdash; produces more verified progress per token than the same budget spent on independent agents.
+            <cite>Working thesis, Open Intelligence vision draft</cite>
+          </blockquote>
+          <p>That thesis is a bet, not a result. The network exists to test it under honest conditions: one task, a fixed budget, and a comparison between one strong agent, many independent agents, and many agents coordinated by the network. A null result is a real possibility, and one we commit to publishing.</p>
+          <p>Distribution changes the trust model rather than the arithmetic. Volunteers keep their own keys and credentials, the coordinator never sees how a result was produced, and correctness comes from verification and replication&nbsp;&mdash; never from who submitted it, and never from a vote.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="how">
+      <div class="wrap split">
+        <header><h2>How it works</h2></header>
+        <ol class="steps">
+          <li><div><strong>Run a node</strong><span>Install the library on your own machine. It creates an Ed25519 identity that never leaves your disk.</span></div></li>
+          <li><div><strong>Connect</strong><span>Redeem an invite and receive a coordinator-signed contract, verified against a shipped trust root. The node only ever dials out over HTTPS; nothing listens on your machine.</span></div></li>
+          <li><div><strong>Lease</strong><span>The node leases a unit of work. Leases are renewed by heartbeats and expire on silence, so work from a vanished node is reassigned automatically.</span></div></li>
+          <li><div><strong>Solve locally</strong><span>A shipped handler, or in later phases the node&rsquo;s own LLM inside a per-attempt local sandbox, works the task. No code arrives over the network.</span></div></li>
+          <li><div><strong>Check deterministically</strong><span>The node checks its own answer with the problem&rsquo;s objective verifier before submitting anything.</span></div></li>
+          <li><div><strong>Sign the result</strong><span>Only the checked result, signed with the node&rsquo;s key, crosses the wire. Sandbox code, logs and state stay local.</span></div></li>
+          <li><div><strong>Coordinator verification</strong><span>The coordinator checks the signature and the lease, re-verifies the result, and records it. Duplicate results are legal and serve as replication.</span></div></li>
+          <li><div><strong>Knowledge and leaderboard</strong><span>Accepted results become part of the shared record, with provenance, and the best verified scores are published.</span></div></li>
+        </ol>
+      </div>
+    </section>
+
+    <section id="network">
+      <div class="wrap split">
+        <header><h2>Live network</h2></header>
+        <div>
+          <p class="net-state" id="net-state" aria-live="polite"><span class="dot" aria-hidden="true"></span>Phase A live since 2026-09-17. <span id="net-msg">Loading network stats&hellip;</span></p>
+          <dl class="stats" id="stats">
+            <div class="stat"><dt>Nodes</dt><dd data-stat="nodes"><span class="skeleton"></span></dd></div>
+            <div class="stat"><dt>Problems</dt><dd data-stat="problems"><span class="skeleton"></span></dd></div>
+            <div class="stat"><dt>Submissions</dt><dd data-stat="submissions"><span class="skeleton"></span></dd></div>
+            <div class="stat"><dt>Best scores</dt><dd data-stat="best"><span class="skeleton"></span></dd></div>
+          </dl>
+          <div class="table-wrap">
+            <table id="leaderboard">
+              <caption>Best verified scores</caption>
+              <thead><tr><th scope="col">Problem</th><th scope="col">Node</th><th scope="col" class="num">Score</th></tr></thead>
+              <tbody><tr class="empty"><td colspan="3">Loading leaderboard&hellip;</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="join">
+      <div class="wrap split">
+        <header><h2>Join</h2></header>
+        <div>
+          <ol class="cmds">
+            <li><p>Install the library (Python 3.9 or newer).</p><pre><code>pip install open-intelligence</code></pre></li>
+            <li><p>Connect with your invite. The trust root is the coordinator&rsquo;s public key.</p><pre><code>open-intelligence connect \
+  --endpoint   https://api.open-intelligence.space \
+  --trust-root &lt;coordinator-pubkey&gt; \
+  --invite     &lt;your-invite-token&gt;</code></pre></li>
+            <li><p>Start contributing. Runs in the foreground; Ctrl-C stops and drains.</p><pre><code>open-intelligence start</code></pre></li>
+          </ol>
+          <p class="note">Phase A is invite-only, and the package is installed from the repository until its first public release. Check your node any time with <code>open-intelligence status</code>.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="whitepaper">
+      <div class="wrap teaser">
+        <div>
+          <p class="eyebrow">Whitepaper &middot; Draft v0.1</p>
+          <h2>Open Intelligence: a volunteer network for distributed AI research</h2>
+          <p class="byline">Dimitris Katsiros, Dr. Michalis Chatzianastasis</p>
+          <p class="prose muted">Principles, architecture, the execution boundary, verification and the trust ladder, scoring, roadmap and the open problems we have not solved.</p>
+        </div>
+        <a class="btn" href="whitepaper.html">Read the draft</a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span>&copy; 2026 Open Intelligence &middot; draft v0.1</span>
+      <span><a href="https://github.com/dkatsiros-dev/open-intelligence-site/issues">Open an issue</a> &middot; <a href="https://github.com/dkatsiros-dev/open-intelligence-site">GitHub</a></span>
+    </div>
+  </footer>
+
+  <script src="app.js" defer></script>
+  <script src="swarm.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Open Intelligence: a volunteer network for distributed AI research — Draft v0.1</title>
+  <meta name="description" content="Whitepaper draft v0.1: principles, architecture, execution boundary, verification and roadmap of the Open Intelligence volunteer research network.">
+  <meta name="author" content="Dimitris Katsiros, Dr. Michalis Chatzianastasis">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <nav class="nav" aria-label="Primary">
+    <div class="wrap">
+      <a class="wordmark" href="./">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="10.5" fill="none" stroke="#1d3557" stroke-width="2.5"/><circle cx="16" cy="16" r="3" fill="#1d3557"/></svg>
+        Open Intelligence
+      </a>
+      <ul>
+        <li><a href="./#how">How it works</a></li>
+        <li><a href="./#network">Network</a></li>
+        <li><a href="./#join">Join</a></li>
+        <li><a href="whitepaper.html" aria-current="page">Whitepaper</a></li>
+        <li><a href="https://github.com/dkatsiros-dev/open-intelligence-site">GitHub</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main>
+    <article class="paper">
+      <header class="title">
+        <span class="draft-flag">Draft v0.1</span>
+        <h1>Open Intelligence: a volunteer network for distributed AI research</h1>
+        <p class="meta">Draft v0.1 &mdash; October 2026</p>
+        <p class="meta">Dimitris Katsiros, Dr. Michalis Chatzianastasis</p>
+      </header>
+
+      <section class="abstract" aria-labelledby="abstract">
+        <h2 id="abstract">Abstract</h2>
+        <p>Open Intelligence is a proposal and a working first phase for a volunteer research network: anyone with an invite connects a machine as a node, leases units of work from a coordinator, solves them locally with their own compute and, in later phases, their own language model, and returns a signed result that the network verifies before it counts. The distributed plumbing is deliberately conventional. The contribution we are after is epistemic: a mechanism by which untrusted, heterogeneous participants produce results that are checked, attributable and safe to build on. This draft states the thesis, the architectural invariants the network must satisfy, the execution boundary that keeps volunteers safe, the verification and trust model that keeps the network safe, the current roadmap, and the open problems we have not solved. It reports no experimental results.</p>
+      </section>
+
+      <nav class="toc" aria-labelledby="toc">
+        <h2 id="toc">Contents</h2>
+        <ol>
+          <li><a href="#motivation">1&ensp;Motivation</a></li>
+          <li><a href="#principles">2&ensp;Principles</a></li>
+          <li><a href="#architecture">3&ensp;Architecture</a></li>
+          <li><a href="#boundary">4&ensp;Execution boundary and safety</a></li>
+          <li><a href="#verification">5&ensp;Verification and the trust ladder</a></li>
+          <li><a href="#scoring">6&ensp;Problems and scoring</a></li>
+          <li><a href="#roadmap">7&ensp;Roadmap</a></li>
+          <li><a href="#open">8&ensp;Open questions</a></li>
+          <li><a href="#references">References</a></li>
+        </ol>
+      </nav>
+
+      <section id="motivation" aria-labelledby="h-motivation">
+        <h2 id="h-motivation">1&ensp;Motivation</h2>
+        <p>Recent work has shown that very large populations of language-model agents can make progress on hard technical problems when they are organised rather than merely multiplied. The most visible example is OpenAI&rsquo;s reported Navier&ndash;Stokes effort of September 2026: roughly ten thousand concurrent agents in communicating groups, cross-pollinating intermediate results, followed by formalisation in Lean. That effort is an existence proof for the computation model, but it is an existence proof under one condition: a single organisation owned every machine, every model, every credential and every result.</p>
+        <p>Nobody has shown the same loop with independently owned, untrusted nodes and with problems chosen in the open. That is the gap Open Intelligence targets. Our working thesis is:</p>
+        <blockquote>Structured collective intelligence &mdash; decomposition, exploration, cross-pollination, adversarial verification and adaptive allocation &mdash; produces more <em>verified</em> progress per token than the same budget spent on independent agents.</blockquote>
+        <p>We treat this as a falsifiable bet, not a finding. The proposed test is simple to state: one task, a fixed token budget, and three conditions &mdash; one strong agent, N independent agents, and N agents coordinated by the network. If structure does not beat independence, that null result is still worth publishing, and we commit to doing so.</p>
+        <p>The attempt is timely for three reasons. The distributed plumbing &mdash; orchestration, sandboxing, volunteer-compute patterns &mdash; is mature, so effort can go to the epistemic part. Capable local models and bring-your-own-key economics let volunteers contribute real cognition without the network holding credentials. And objective verification tooling is usable today for mathematics and code, which is why those are the first domains.</p>
+        <p>The image we keep returning to is a research university without a building: each machine a small lab, no lab needing to know the whole solution, some exploring, some challenging, some verifying, and only the knowledge that survives scrutiny rising to a shared record.</p>
+      </section>
+
+      <section id="principles" aria-labelledby="h-principles">
+        <h2 id="h-principles">2&ensp;Principles</h2>
+        <p>The network is built on a short list of non-negotiable invariants. They are what make a population of untrusted, heterogeneous nodes that join and leave freely both safe and elastic. We group them as the design document does.</p>
+        <h3>State and knowledge</h3>
+        <ul>
+          <li>No shared mutable filesystem between nodes.</li>
+          <li>Artifacts are immutable and content-addressed.</li>
+          <li>Workers read versioned snapshots of knowledge.</li>
+          <li>Workers publish events and results rather than mutating global state.</li>
+          <li>PostgreSQL is the authoritative source of truth.</li>
+        </ul>
+        <h3>Task lifecycle and scheduling</h3>
+        <ul>
+          <li>Tasks are leased, never permanently assigned.</li>
+          <li>Heartbeats renew leases.</li>
+          <li>Lease expiry causes automatic reassignment.</li>
+        </ul>
+        <h3>Execution semantics</h3>
+        <ul>
+          <li>Task execution is at-least-once, not exactly-once.</li>
+          <li>Duplicate results are legal and may be used for validation.</li>
+          <li>Every execution has a unique attempt ID.</li>
+        </ul>
+        <h3>Workspaces and collaboration</h3>
+        <ul>
+          <li>Subagents get separate local workspaces.</li>
+          <li>Collaborative code editing uses branches or worktrees and a merge.</li>
+        </ul>
+        <h3>Membership and elasticity</h3>
+        <ul>
+          <li>Node arrival and departure require no global synchronisation.</li>
+        </ul>
+        <p>These rules reinforce one another. Immutable, content-addressed artifacts and a single authoritative store mean nodes never contend over shared mutable state. Leasing, heartbeats, at-least-once execution and attempt IDs make the network tolerant of a volunteer&rsquo;s laptop closing mid-task. Treating duplicate results as validation turns redundancy from waste into a verification asset. And requiring no global synchronisation on join or leave is what lets the network grow from two nodes to many without the coordinator becoming a bottleneck. A sixth group, the execution boundary, is important enough to have its own section (&sect;4).</p>
+        <p>Two further principles, carried over from the original design discussion, shape everything else. <strong>Governance consensus is not epistemic consensus</strong>: popularity may decide what to investigate, but never what is true. And <strong>verification uses classes, not majority vote</strong>: recalculation, tests, formal proof, artifact reruns, citation checking and, only where unavoidable, critic panels and humans. Counting votes among correlated models is not verification.</p>
+      </section>
+
+      <section id="architecture" aria-labelledby="h-architecture">
+        <h2 id="h-architecture">3&ensp;Architecture</h2>
+        <p>The first version has a centralised control plane and decentralised compute. That is a deliberate choice: there is no blockchain, token or peer-to-peer layer until the epistemic core is proven. Peer-to-peer identity and federation are deferred, not rejected.</p>
+        <h3>The coordinator as a thin ledger</h3>
+        <p>The coordinator is a thin coordination ledger in PostgreSQL. It records facts, pointers and events &mdash; problems, work units, leases, attempts, results &mdash; and grows with the number of rows, not with the size of the work. Everything else is expressed as leased task kinds on one attempt protocol: solving, verifying, planning, snapshotting, and in code campaigns writing, integrating and rebasing. The coordinator&rsquo;s own responsibilities are split into replicable roles (API, lease expiry, outbox, artifact service) so that none is inherently a single point of scale.</p>
+        <h3>Leases, heartbeats and fencing</h3>
+        <p>A node never owns a task; it holds a lease on it. Heartbeats renew the lease while work continues. When heartbeats stop, the lease expires and the work returns to the pool for another node. Every execution carries a unique attempt ID, and results are bound to the lease and attempt that produced them, so a node whose lease has lapsed cannot overwrite the work of its successor. In Phase A this was exercised end to end with multiple nodes, lease-expiry reassignment, fencing and coordinator restart.</p>
+        <h3>Content-addressed artifacts</h3>
+        <p>Inputs and outputs larger than a ledger row live in a content-addressed store. An artifact is named by its digest, is immutable once written, and can be fetched from any backend that holds it; storage backends are swappable without changing the protocol. A node can therefore check that it received exactly what was referenced.</p>
+        <h3>Outbound-only transport</h3>
+        <p>Nodes dial out over HTTPS to the public coordination endpoint and to artifact backends. Nothing listens on a volunteer&rsquo;s machine; there is no inbound connection, no mesh and no node-to-node traffic. This removes NAT traversal as a problem and sharply limits what a compromised coordinator could reach.</p>
+        <h3>Identity and admission classes</h3>
+        <p>Each node holds an Ed25519 key pair generated locally; the private key never leaves the machine. A node joins by redeeming a single-use invite and receives a coordinator-signed contract, which it verifies against a trust root shipped with the client &mdash; the coordinator&rsquo;s public key &mdash; rather than trusting on first use. Trust is not binary: every node sits in an admission class, starting untrusted and moving to probationary and then trusted through agreement with other nodes, performance on known-answer tasks and age (&sect;5). Admission class bounds what work a node may lease and how much weight its results carry.</p>
+      </section>
+
+      <section id="boundary" aria-labelledby="h-boundary">
+        <h2 id="h-boundary">4&ensp;Execution boundary and safety</h2>
+        <p>The single most important safety property of the network is about code, and it is precise about whose code.</p>
+        <p><strong>The network never ships runnable code to a node.</strong> Task manifests, artifacts, leases and contracts are data, addressed by digest. A node executes nothing the coordinator or any peer sends. Problem submitters cannot supply arbitrary containers; tasks are manifests interpreted by a standard runtime the volunteer installed. We call this property <em>no network-supplied code</em>.</p>
+        <p><strong>A node&rsquo;s own model may write and run code &mdash; locally, in a sandbox.</strong> From Phase B, the language model a volunteer chooses, using the volunteer&rsquo;s own key on the volunteer&rsquo;s own machine, is a solver rather than a proposer of static answers: it may generate code and run it. That code runs only inside a per-attempt sandbox managed by the node&rsquo;s harness, which must enforce no network, no host filesystem, no secrets in the environment (the model key and node identity stay in the daemon), CPU, memory, process and wall-clock limits, a non-root user with a read-only root filesystem and no capabilities, a pinned image, and one throwaway container per attempt. The sandbox&rsquo;s output is parsed as schema-checked data and is never executed. Docker is the first isolation tier; gVisor and Firecracker are the tiers for when the network opens beyond invited nodes.</p>
+        <p><strong>Only the checked, signed result leaves the node.</strong> Sandbox code, logs and state never cross the wire. The coordinator sees a lease go out and a signed result come back, and does not know whether a model was involved.</p>
+        <h3>Two separate security problems</h3>
+        <p>The design keeps two problems apart, because confusing them is the most common mistake in volunteer-compute security.</p>
+        <table>
+          <thead><tr><th scope="col">Problem</th><th scope="col">Threat</th><th scope="col">Defence</th></tr></thead>
+          <tbody>
+            <tr><td>Protect the node from the task</td><td>Work that reads private files or damages the host</td><td>No network-supplied code; per-attempt sandbox for the node&rsquo;s own model output</td></tr>
+            <tr><td>Protect the network from the node</td><td>Faked output, Sybil identities, poisoned context</td><td>Signed results, objective re-verification, redundant execution, reputation, known-answer tasks</td></tr>
+          </tbody>
+        </table>
+        <p>The sandbox protects the owner; verification protects the network. Running code in a sandbox does not make a result more trustworthy &mdash; whoever owns a machine can fake its output &mdash; so no sandbox, however strong, substitutes for verification.</p>
+        <p>Volunteers keep their own model credentials. The network never sends API keys to untrusted machines, and as a side effect it becomes a heterogeneous cluster of models, which we regard as a feature: model diversity reduces correlated failure.</p>
+      </section>
+
+      <section id="verification" aria-labelledby="h-verification">
+        <h2 id="h-verification">5&ensp;Verification and the trust ladder</h2>
+        <p>A result counts only after the network has checked it. Verification is organised by what can be checked, not by how many participants agree.</p>
+        <table>
+          <thead><tr><th scope="col">Class</th><th scope="col">Domain</th><th scope="col">Method</th></tr></thead>
+          <tbody>
+            <tr><td>V1</td><td>Computation</td><td>Recalculate</td></tr>
+            <tr><td>V2</td><td>Programming</td><td>Tests and property tests</td></tr>
+            <tr><td>V3</td><td>Theorems</td><td>Proof assistant (Lean)</td></tr>
+            <tr><td>V4</td><td>Experiments</td><td>Rerun artifacts</td></tr>
+            <tr><td>V5</td><td>Research claims</td><td>Citation checks and reviewers</td></tr>
+            <tr><td>V6</td><td>Hypotheses</td><td>Critic panels and humans</td></tr>
+          </tbody>
+        </table>
+        <p>The first version restricts its claims to the domains where verification is objective &mdash; the upper rows of this table &mdash; and says so. Mathematics is the ideal target: a proof assistant returns true or false, not an opinion.</p>
+        <p>Verification happens twice. The node checks its own answer with the problem&rsquo;s deterministic checker before it signs anything, which saves the network from wasted submissions. The coordinator then checks the signature and lease and re-verifies the result itself; the node&rsquo;s self-check is a courtesy, not evidence.</p>
+        <p>Above individual results sits the trust ladder. A node starts untrusted, becomes probationary and then trusted on the strength of three signals: agreement with independent nodes on duplicated work, correct answers on known-answer (&ldquo;gold&rdquo;) tasks mixed invisibly into its workload, and age. The ladder is what will eventually let the network open beyond invited participants. Its parameters &mdash; gold-task rates, update rules, the consequences of failure &mdash; are not yet designed, and it is scheduled for Phase C. It complements verification and never replaces it: a trusted node&rsquo;s result is still checked.</p>
+        <p>In the longer term, findings will live on a shared record with provenance, confidence and a lifecycle: proposed, replicated, disputed, verified, retracted. We expect that record and the merge gate of a self-extending codebase to be the same mechanism &mdash; claim, evidence, adversarial review, promotion &mdash; whether the payload is a lemma, a patch or a configuration change.</p>
+      </section>
+
+      <section id="scoring" aria-labelledby="h-scoring">
+        <h2 id="h-scoring">6&ensp;Problems and scoring</h2>
+        <p>A problem is admitted to the network only if it comes with an objective verifier: a deterministic program that, given a candidate solution, says whether it is valid and how good it is. Without one, a result cannot be checked by an untrusted coordinator, and the problem is out of scope for this version.</p>
+        <p>The first campaign follows this rule closely. Phase A runs a graph k-colouring workload: nodes lease colouring tasks, solve them with a shipped deterministic handler, and return signed results that the coordinator checks. Phase B sharpens the objective. Because a standard greedy heuristic always produces a proper colouring, &ldquo;proper&rdquo; leaves no headroom; the target becomes a colouring that uses no more than the planted number of colours, as confirmed by the checker. A model-driven solver passes only if the checker says so.</p>
+        <p>Scores are published on a public leaderboard of verified results, attributed to the node that produced them. Every entry is a score the coordinator re-verified, not a score a node claimed.</p>
+        <p>Because execution is at-least-once, the same work may be done by several nodes. That is not waste. Duplicate results are legal, and independent nodes reaching the same answer is replication &mdash; the oldest validation technique in volunteer computing &mdash; and one of the inputs to the trust ladder. Content addressing makes agreement cheap to detect: identical outputs have identical digests.</p>
+      </section>
+
+      <section id="roadmap" aria-labelledby="h-roadmap">
+        <h2 id="h-roadmap">7&ensp;Roadmap</h2>
+        <p>Each phase must be useful on its own, even if the next never ships.</p>
+        <h3>Phase A &mdash; compute harness (done)</h3>
+        <p>A single installable package provides the coordinator, the node library and command-line client, and the k-colouring workload. Nodes connect with an invite and a trust root, lease work, run a shipped handler, and return Ed25519-signed results; Phase A uses no language-model tokens. Multi-node operation, fencing, lease-expiry reassignment and restart were verified on the coordinator host, and the public endpoint has been live since 2026-09-17. Phase A runs only trusted, shipped handlers and does not yet sandbox anything.</p>
+        <h3>Phase B &mdash; the node&rsquo;s own model as solver (designed)</h3>
+        <p>Phase B adds the per-attempt sandbox supervisor described in &sect;4 and an optional model adapter: a volunteer&rsquo;s own model, with a key that never leaves the node, writes and runs solver code inside the sandbox, and only the checked, signed result is submitted. The coordinator is unchanged. The first experiment compares one node, two nodes, and two nodes with a model solver against the same checker-defined objective. A null result is a legitimate outcome.</p>
+        <h3>Phase C &mdash; trust ladder (deferred)</h3>
+        <p>Phase C introduces gold tasks, agreement-based promotion between admission classes, and reputation. It is the prerequisite for opening the network beyond invited nodes, and for stronger sandbox tiers. Further out, and conditional on the open problems below, are a shared findings record with adversarial review and, as the north star, bounded self-extension: the network working on its own harness, with verification standing in for the human merge gate only where data shows it is as good.</p>
+        <p>Deliberately not on the roadmap yet: a public voting interface, tokens or incentives, blockchain, peer-to-peer federation, domains beyond code and mathematics, and thousand-node scale.</p>
+      </section>
+
+      <section id="open" aria-labelledby="h-open">
+        <h2 id="h-open">8&ensp;Open questions</h2>
+        <p>These are the problems that decide whether the thesis holds. Naming them precisely is part of the contribution; none is solved.</p>
+        <ol>
+          <li><strong>Knowledge poisoning and the validation protocol.</strong> One wrong finding promoted with high confidence is consumed by every downstream agent. How many independent replications are needed, and how independent must they be &mdash; different model families, different operators? Who reviews, chosen how? When a verified finding falls, what happens to everything derived from it? The same protocol would be the merge gate for self-extension, so if its poison rate cannot be bounded, self-extension stays off the table by design.</li>
+          <li><strong>Verification outside formal domains.</strong> Mathematics has proof assistants and code has tests; a novel scientific hypothesis has no assertion to run. Model-as-judge is useful signal and unacceptable ground truth. Humans close the gap but are scarce, and a human-review layer with real throughput is undesigned. Until it exists, the network restricts its claims to verifiable domains.</li>
+          <li><strong>Task decomposition.</strong> Everything downstream is bounded by how a raw problem is split into directions. Overlapping directions waste the network; badly sized ones defeat it. How to estimate the expected information gain of an unexplored branch, which any adaptive allocator needs, is itself open.</li>
+          <li><strong>Cross-pollination topology.</strong> Share too much and the network converges prematurely; share too little and it duplicates effort. Round-based redistribution of the best findings is a starting heuristic, not an answer.</li>
+          <li><strong>Sybil resistance and reputation.</strong> Invite-only operation sidesteps this; a public network cannot.</li>
+          <li><strong>Governance and admission review.</strong> Voting eligibility, capture resistance, and a safety review that prevents the network being pointed at harmful workloads are obligations before any public launch.</li>
+          <li><strong>Incentives.</strong> The first version runs on goodwill, as volunteer computing has before. What sustains contribution at scale is open, and we do not intend to answer it with a token.</li>
+        </ol>
+        <p>Nothing aspirational in this document is presented as settled. The project&rsquo;s credibility depends on keeping that separation.</p>
+      </section>
+
+      <section id="references" aria-labelledby="h-references">
+        <h2 id="h-references">References</h2>
+        <ol class="refs">
+          <li>Open Intelligence site repository. <a href="https://github.com/dkatsiros-dev/open-intelligence-site">https://github.com/dkatsiros-dev/open-intelligence-site</a></li>
+          <li>Einstein Arena &mdash; related work on open problems with objective scoring. <a href="https://github.com/vinid/einstein-arena">https://github.com/vinid/einstein-arena</a></li>
+          <li>BOINC &mdash; Berkeley Open Infrastructure for Network Computing; prior art for volunteer computing, work units and replication-based validation. <a href="https://boinc.berkeley.edu/">https://boinc.berkeley.edu/</a></li>
+          <li>Folding@home &mdash; prior art for volunteer distributed computing in science. <a href="https://foldingathome.org/">https://foldingathome.org/</a></li>
+        </ol>
+        <p class="no-print"><a class="back" href="./">&larr; Back to open-intelligence.space</a></p>
+      </section>
+    </article>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span>&copy; 2026 Open Intelligence &middot; draft v0.1</span>
+      <span><a href="https://github.com/dkatsiros-dev/open-intelligence-site/issues">Open an issue</a> &middot; <a href="https://github.com/dkatsiros-dev/open-intelligence-site">GitHub</a></span>
+    </div>
+  </footer>
+</body>
+</html>
