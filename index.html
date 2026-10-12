@@ -21,6 +21,7 @@
         <li><a href="#how">How it works</a></li>
         <li><a href="#network">Network</a></li>
         <li><a href="#join">Join</a></li>
+        <li><a href="#contribute">Contribute</a></li>
         <li><a href="whitepaper.html">Whitepaper</a></li>
         <li><a href="https://github.com/dkatsiros-dev/open-intelligence-site">GitHub</a></li>
       </ul>
@@ -117,6 +118,17 @@
             <li><p>Start contributing. Runs in the foreground; Ctrl-C stops and drains.</p><pre><code>open-intelligence start</code></pre></li>
           </ol>
           <p class="note">Phase A is invite-only, and the package is installed from the repository until its first public release. Check your node any time with <code>open-intelligence status</code>.</p>
+          <form class="waitlist" action="/api/waitlist" method="post" data-waitlist hidden>
+            <label for="join-email">Email</label>
+            <input id="join-email" name="email" type="email" required maxlength="254" autocomplete="email">
+            <label for="join-note">What hardware or model do you run? <span class="muted">(optional)</span></label>
+            <input id="join-note" name="note" type="text" maxlength="500" placeholder="e.g. RTX 4090, Llama 3.1 8B">
+            <div class="hp" aria-hidden="true"><label for="join-website">Leave this empty</label><input id="join-website" name="website" type="text" tabindex="-1" autocomplete="off"></div>
+            <button class="btn" type="submit">Join the waitlist</button>
+            <p class="consent">We keep your email and note only to send you an invite. We never share them, and we delete them when you ask.</p>
+            <p class="wl-status" role="status" aria-live="polite"></p>
+          </form>
+          <p class="wl-fallback" data-waitlist-fallback><a class="btn" href="https://github.com/dkatsiros-dev/open-intelligence-site/issues/new?template=invite.md&amp;title=Invite+request">Request an invite</a><span class="muted">Opens a public GitHub issue.</span></p>
         </div>
       </div>
     </section>
@@ -132,6 +144,37 @@
         <a class="btn" href="whitepaper.html">Read the draft</a>
       </div>
     </section>
+
+    <section id="contribute">
+      <div class="wrap split">
+        <header><h2>Build it with us</h2></header>
+        <div>
+          <p class="lede">The network is built from open source to open source: it runs on open tools, and what it produces, checked results and the code behind them, goes back out in the open.</p>
+          <div class="cta-grid">
+            <div>
+              <h3>Connect a node</h3>
+              <p>Phase A is invite-only while we harden the coordinator. Join the waitlist and we will send an invite as places open.</p>
+              <form class="waitlist" action="/api/waitlist" method="post" data-waitlist hidden>
+                <label for="cta-email">Email</label>
+                <input id="cta-email" name="email" type="email" required maxlength="254" autocomplete="email">
+                <label for="cta-note">What hardware or model do you run? <span class="muted">(optional)</span></label>
+                <input id="cta-note" name="note" type="text" maxlength="500" placeholder="e.g. RTX 4090, Llama 3.1 8B">
+                <div class="hp" aria-hidden="true"><label for="cta-website">Leave this empty</label><input id="cta-website" name="website" type="text" tabindex="-1" autocomplete="off"></div>
+                <button class="btn" type="submit">Join the waitlist</button>
+                <p class="consent">We keep your email and note only to send you an invite. We never share them, and we delete them when you ask.</p>
+                <p class="wl-status" role="status" aria-live="polite"></p>
+              </form>
+              <p class="wl-fallback" data-waitlist-fallback><a class="btn" href="https://github.com/dkatsiros-dev/open-intelligence-site/issues/new?template=invite.md&amp;title=Invite+request">Request an invite</a><span class="muted">Opens a public GitHub issue.</span></p>
+            </div>
+            <div>
+              <h3>Grow the project</h3>
+              <p>The site, the whitepaper and the issue tracker are public today; the library and the coordinator follow with the first public release. Report what is unclear, propose a problem worth verifying, or pick up an open issue.</p>
+              <p><a href="https://github.com/dkatsiros-dev/open-intelligence-site">Source on GitHub</a> &middot; <a href="https://github.com/dkatsiros-dev/open-intelligence-site/issues">Open issues</a></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   </main>
 
   <footer>
@@ -142,6 +185,7 @@
   </footer>
 
   <script src="app.js" defer></script>
+  <script src="waitlist.js" defer></script>
   <script src="swarm.js" defer></script>
 </body>
 </html>

@@ -76,13 +76,18 @@ section:first-of-type { border-top: 0; }
   .split > header h2 { position: sticky; top: 6rem; }
 }
 
-/* How it works + Join: on wide screens the swarm box starts at 55% of the viewport, so stack
-   the heading above and cap the content so it ends before ~58vw
-   (left edge of .wrap content = max(0, 50vw - 560px) + 40px gutter). */
-@media (min-width: 1100px) {
-  #how .split, #join .split { grid-template-columns: minmax(0, 1fr); }
-  #how .split > header h2, #join .split > header h2 { position: static; }
-  #how .steps, #join .split > div { max-width: min(46rem, 58vw - 40px, 8vw + 520px); }
+/* Readability, belt and braces: every text column sits on near-opaque white above the swarm
+   canvas (z-index -1 < main/footer), whatever the canvas does on a given engine. */
+main, footer { position: relative; z-index: 1; }
+.hero .wrap > *, .split > *, .teaser > div, footer .wrap > * {
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 0 0 0.6rem rgba(255, 255, 255, 0.94);
+}
+/* Below the side layout the swarm fills the viewport: back whole content blocks instead, so
+   it shows only in the bands between sections, not as strips between paragraphs. */
+@media (max-width: 1099px) {
+  .hero .wrap > *, .split > *, .teaser > div, footer .wrap > * { background: none; box-shadow: none; }
+  main .wrap, footer .wrap { background: rgba(255, 255, 255, 0.94); }
 }
 
 /* Hero */
@@ -169,6 +174,31 @@ pre {
 }
 .note { font-size: 0.9375rem; color: var(--ink-2); padding: 1rem 0 0; border-top: 1px solid var(--rule); max-width: 46rem; }
 
+/* Waitlist (waitlist.js reveals the form once /api/waitlist reports it is open) */
+.waitlist { display: grid; gap: 0.4rem; max-width: 30rem; margin: 1.5rem 0 0; }
+.waitlist[hidden], .wl-fallback[hidden] { display: none; }
+.waitlist label { font-size: 0.875rem; color: var(--ink-2); }
+.waitlist input {
+  font: 400 1rem/1.4 var(--sans); color: var(--ink);
+  padding: 0.6rem 0.75rem; margin: 0 0 0.6rem;
+  border: 1px solid #c9cbd0; border-radius: 3px; background: #fff;
+}
+.waitlist input:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+.waitlist .btn { justify-self: start; border: 0; cursor: pointer; }
+.waitlist .btn[disabled] { opacity: 0.6; cursor: default; }
+.waitlist .hp { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+.consent, .wl-status { font-size: 0.8125rem; color: var(--ink-3); margin: 0.4rem 0 0; }
+.wl-status:empty { display: none; }
+.wl-status.ok { color: #2f6b4f; }
+.wl-status.err { color: #9b2c2c; }
+.wl-fallback { margin: 1.25rem 0 0; font-size: 0.9375rem; }
+.wl-fallback .btn { margin-right: 0.75rem; }
+
+/* Build it with us */
+.cta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 0 2.5rem; }
+.cta-grid h3 { margin-top: 1rem; }
+.cta-grid .waitlist { max-width: none; }
+
 /* Whitepaper teaser */
 .teaser { display: grid; gap: 2rem; align-items: end; }
 @media (min-width: 900px) { .teaser { grid-template-columns: minmax(0, 1fr) auto; } }
@@ -176,28 +206,37 @@ pre {
 
 .byline { font-size: 0.9375rem; color: var(--ink-2); margin: -0.5rem 0 1rem; }
 
-/* Background swarm (swarm.js): fixed full-page canvas behind content. swarm.js keeps the
-   formations in the right ~45% on desktop; the mask fades them out before the text column. */
+/* Background swarm (swarm.js): fixed canvas behind content, no CSS mask. By default it covers
+   the viewport at low opacity behind the text backdrops; on wide screens swarm.js adds
+   .swarm-side and sets left/width so the canvas starts right of the text columns. */
 .swarm {
   position: fixed; top: 0; left: 0; z-index: -1;
-  width: 100vw; height: 100vh; height: 100lvh;
+  width: 100%; height: 100vh; height: 100lvh;
   pointer-events: none;
-  -webkit-mask-image: linear-gradient(to right, transparent 0 52%, #000 68%);
-  mask-image: linear-gradient(to right, transparent 0 52%, #000 68%);
+  opacity: 0.35;
 }
+.swarm-side .swarm { opacity: 1; }
 .swarm[hidden] { display: none; }
-@media (max-width: 760px) {
-  .swarm {
-    opacity: 0.45;
-    -webkit-mask-image: linear-gradient(to right, rgba(0, 0, 0, 0.35) 0, #000 70%);
-    mask-image: linear-gradient(to right, rgba(0, 0, 0, 0.35) 0, #000 70%);
-  }
-}
 
 /* Footer */
 footer { border-top: 1px solid var(--rule); padding: 2.5rem 0 3rem; font-size: 0.875rem; color: var(--ink-3); }
 footer .wrap { display: flex; flex-wrap: wrap; gap: 0.5rem 2rem; justify-content: space-between; }
 footer a { color: var(--ink-2); }
+
+/* Wide screens: stack every heading above its content and cap each text column so it ends
+   before ~58vw (left edge of .wrap content = max(0, 50vw - 560px) + 40px gutter). swarm.js
+   then places the canvas right of the widest column, so no text ever sits over it.
+   Kept after the component rules it overrides (.steps, .teaser, footer). */
+@media (min-width: 1100px) {
+  :root { --col: min(46rem, 58vw - 40px, 8vw + 520px); }
+  .split { grid-template-columns: minmax(0, 1fr); }
+  .split > header h2 { position: static; }
+  .hero .wrap > *, .split > *, .teaser > * { max-width: var(--col); }
+  .hero .wrap > h1 { max-width: min(20ch, var(--col)); }
+  .teaser { grid-template-columns: minmax(0, 1fr); align-items: start; }
+  .teaser > .btn { justify-self: start; }
+  footer .wrap { justify-content: flex-start; }
+}
 
 /* Whitepaper document */
 .paper { max-width: calc(var(--prose) + 2 * var(--gutter)); margin: 0 auto; padding: clamp(3rem, 8vw, 6rem) var(--gutter) 5rem; }

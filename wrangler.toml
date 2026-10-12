@@ -1,3 +1,10 @@
 name = "open-intelligence"
 pages_build_output_dir = "."
 compatibility_date = "2026-10-12"
+
+# Waitlist storage for functions/api/waitlist.js. Not bound yet: creating the namespace needs a
+# token with Workers KV Storage:Edit. Until then GET /api/waitlist reports {open: false} and the
+# page shows the "Request an invite" GitHub link instead of the form.
+# [[kv_namespaces]]
+# binding = "OI_WAITLIST"
+# id = "<namespace id>"

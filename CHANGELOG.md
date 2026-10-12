@@ -7,11 +7,18 @@ Every commit adds a line here (see README, "Changelog rule").
 
 ## 2026-10-13
 
+### Added
+- "Build it with us" closing call to action before the footer (nav: Contribute): connect a node (invite-only today, join the waitlist) and grow the project (source and open issues here), from open source to open source.
+- Waitlist forms in Join and the CTA (email, optional hardware/model, honeypot, consent line), progressive enhancement in `waitlist.js` (no reload). Backend: Pages Function `functions/api/waitlist.js` (validation, 5 posts per IP per hour, same-origin only, KV `OI_WAITLIST`). KV is not bound yet, so the live page shows a "Request an invite" link to a prefilled issue (`.github/ISSUE_TEMPLATE/invite.md`).
+- CHANGELOG.md, the changelog rule in README, and a versioned pre-commit hook (`scripts/git-hooks/pre-commit`, install with `scripts/install-hooks.sh`).
+
+### Fixed
+- Safari: crisp swarm. WebKit honoured `lineWidth(dpr)` (Chromium clamps to 1), drawing soft 2 device px edges, and the masked full-page WebGL layer was resampled when composited. Edges are 1 device px, the CSS mask is gone, and on wide screens the canvas is placed right of the text columns.
+- Text is always readable: every text column sits on a near-opaque white backdrop above the canvas; below 1100px the swarm runs at opacity .35 behind whole content blocks.
+- Fast scrolling: the swarm maps scrollY to its formation pair and mix every frame (40 ms smoothing, snaps across sections) instead of chasing it with a ~310 ms lag.
+
 ### Changed
 - Swarm background drawn as a crisp graph: solid antialiased 2.2–3.4 px nodes at ~0.92 alpha, 1 px k-nearest-neighbour edges (k=3) at 0.42 alpha in every formation, morphing with the nodes; 1,000 points (was 2,400), soft glow removed.
-
-### Added
-- CHANGELOG.md, the changelog rule in README, and a versioned pre-commit hook (`scripts/git-hooks/pre-commit`, install with `scripts/install-hooks.sh`).
 
 ## 2026-10-12
 

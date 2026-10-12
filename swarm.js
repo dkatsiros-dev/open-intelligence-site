@@ -302,16 +302,20 @@
     document.querySelector("footer")
   ];
   var anchors = new Float64Array(F);
-  var width = 0, height = 0, aspect = 1, dpr = 1, narrow = false;
-  // The canvas covers the page; formations live in a box (NDC) on the right on desktop,
-  // clear of the text column, and use most of the width on phones. CSS masks the left edge.
-  var BOX_DESKTOP = [0.10, -0.86, 0.97, 0.86], BOX_NARROW = [-0.9, -0.86, 0.9, 0.86];
-  var box = BOX_DESKTOP, center = [0, 0], scale = 1, clip = [0, 0, 1, 1];
+  var width = 0, height = 0, aspect = 1, dpr = 1, side = false;
+  // Wide screens ("side" mode): the canvas itself is placed right of the widest text column,
+  // so no prose ever sits over it (no CSS mask: Safari composites masked WebGL layers through
+  // an extra resampling pass). Otherwise it covers the viewport at low opacity behind the
+  // text backdrops (styles.css). Formations live in a box (NDC) inside the canvas.
+  var TEXT_COLS = ".hero .wrap > *, .split > *, .teaser > *, footer .wrap > *";
+  var SIDE_MIN = 320, SIDE_GAP = 32; // CSS px
+  var BOX_SIDE = [-0.94, -0.86, 0.94, 0.86], BOX_FULL = [-0.9, -0.86, 0.9, 0.86];
+  var box = BOX_SIDE, center = [0, 0], scale = 1, clip = [0, 0, 1, 1];
 
   // Largest scale for which the radius-R ball projects inside the box on both axes:
   // under perspective (w = 3.4 + z) the ball's silhouette is max x/w = R / sqrt(3.4^2 - R^2).
   function layout() {
-    box = narrow ? BOX_NARROW : BOX_DESKTOP;
+    box = side ? BOX_SIDE : BOX_FULL;
     center = [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2];
     var hx = (box[2] - box[0]) / 2, hy = (box[3] - box[1]) / 2;
     scale = Math.min(hx * aspect, hy) * Math.sqrt(3.4 * 3.4 - R * R) / R;
@@ -319,8 +323,22 @@
       (box[2] + 1) / 2 * canvas.width, (box[3] + 1) / 2 * canvas.height];
     gl.uniform1f(u.u_scale, scale); gl.uniform1f(u.u_aspect, aspect);
     gl.uniform2fv(u.u_center, center); gl.uniform4fv(u.u_clip, clip);
-    gl.uniform1f(u.u_size, (narrow ? 2.6 : 2.8) * dpr);
-    gl.lineWidth(Math.min(Math.max(dpr, lineRange[0]), lineRange[1])); // 1 CSS px where supported
+    gl.uniform1f(u.u_size, (side ? 2.8 : 2.6) * dpr);
+    // One device pixel everywhere. WebKit honours wider lines (range up to 255) where
+    // Chromium/ANGLE clamps to 1; lineWidth(dpr) made Safari's graph heavy and soft.
+    gl.lineWidth(Math.min(Math.max(1, lineRange[0]), lineRange[1]));
+  }
+
+  // Side mode needs the 1100px layout (styles.css caps every text column there) and a
+  // band of at least SIDE_MIN px right of the text.
+  function place() {
+    var vw = document.documentElement.clientWidth, right = 0, els = document.querySelectorAll(TEXT_COLS);
+    for (var i = 0; i < els.length; i++) right = Math.max(right, els[i].getBoundingClientRect().right);
+    var left = Math.ceil(right + SIDE_GAP);
+    side = window.matchMedia("(min-width: 1100px)").matches && vw - left >= SIDE_MIN;
+    document.documentElement.classList.toggle("swarm-side", side);
+    canvas.style.left = side ? left + "px" : "";
+    canvas.style.width = side ? vw - left + "px" : "";
   }
 
   function measure() {
@@ -338,17 +356,17 @@
 
   function resize() {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
+    place();
     width = canvas.clientWidth; height = canvas.clientHeight;
     var w = Math.max(1, Math.round(width * dpr)), h = Math.max(1, Math.round(height * dpr));
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
     aspect = width / Math.max(1, height);
-    narrow = window.matchMedia("(max-width: 760px)").matches;
     layout();
     measure();
   }
 
-  function scrollTarget() {
-    var y = window.pageYOffset;
+  // Continuous formation index for a scroll offset: k + mix between formations k and k + 1.
+  function scrollTarget(y) {
     if (y <= anchors[0]) return 0;
     for (var k = 0; k < F - 1; k++) {
       var a = anchors[k], b = anchors[k + 1];
@@ -358,9 +376,18 @@
   }
 
   // --- Frame loop ---------------------------------------------------------------
+  // Scroll sync: the passive scroll listener only raises a flag; each frame reads scrollY
+  // itself and maps it straight to (pair, mix). Within one pair the index follows with a
+  // 40 ms time constant (real elapsed time, so a slow frame rate does not add lag); when
+  // the target lies in another pair (a fast scroll or jump, possibly across several
+  // sections) the index snaps to it and the buffers are rebound from that index.
+  var TAU = 0.04; // s
   var running = false, raf = 0, last = 0, t = 0, rot = 0.4, drift = 0;
-  var s = scrollTarget(), pairFrom = -1;
+  var scrollY = window.pageYOffset, scrolled = false;
+  var s = 0, pairFrom = -1;
   var visible = true;
+
+  function pairOf(x) { return Math.min(Math.floor(x), F - 2); }
 
   function ease(x) { // hold each formation a little, then glide
     x = Math.min(Math.max((x - 0.12) / 0.76, 0), 1);
@@ -385,15 +412,17 @@
   function frame(now) {
     raf = 0;
     if (!running) return;
-    var dt = last ? Math.min((now - last) / 1000, 0.05) : 0.016;
+    var elapsed = last ? Math.min((now - last) / 1000, 1) : 0.016;
+    var dt = Math.min(elapsed, 0.05); // animation clock: no jumps after a stall
     last = now;
     t += dt;
 
-    // Smooth the continuous formation index toward the scroll target.
-    var target = scrollTarget();
-    s += (target - s) * (1 - Math.exp(-dt * 3.2));
+    if (scrolled) { scrolled = false; scrollY = window.pageYOffset; }
+    var target = scrollTarget(scrollY);
+    if (pairOf(target) !== pairOf(s)) s = target;
+    else s += (target - s) * (1 - Math.exp(-elapsed / TAU));
     if (Math.abs(target - s) < 1e-4) s = target;
-    var k = Math.min(Math.floor(s), F - 2), f = ease(s - k);
+    var k = pairOf(s), f = ease(s - k);
 
     // Weight of the wordmark formation: rotation settles so the ring faces the viewer.
     var wMark = Math.max(0, 1 - Math.abs(s - 5));
@@ -430,7 +459,10 @@
   // ?swarmdebug: CPU mirror of VS so tests can check where points land.
   var pose = { k: -1, f: 0 };
   if (debug) window.__swarm = {
+    state: function () { var k = pairOf(s); return { sectionIndex: k, mix: s - k, eased: pose.f }; },
+    expected: function (y) { var x = scrollTarget(y), k = pairOf(x); return { sectionIndex: k, mix: x - k }; },
     box: function () { return box.slice(); },
+    side: function () { return side; },
     edges: function () { return edgeCounts.map(function (c) { return c / 2; }); },
     points: function () { // NDC [x, y] of every point (edge endpoints are points)
       if (pose.k < 0) return [];
@@ -474,11 +506,12 @@
   }
   canvas.addEventListener("webglcontextlost", function (e) { e.preventDefault(); stop(); canvas.hidden = true; });
 
-  window.addEventListener("resize", resize);
-  if ("ResizeObserver" in window) new ResizeObserver(measure).observe(document.body); // late content (stats table) moves anchors
-  window.addEventListener("load", measure);
+  window.addEventListener("scroll", function () { scrolled = true; }, { passive: true });
+  window.addEventListener("resize", function () { scrolled = true; resize(); });
+  if ("ResizeObserver" in window) new ResizeObserver(resize).observe(document.body); // late content (stats table) moves anchors and columns
+  window.addEventListener("load", resize);
 
   resize();
-  s = scrollTarget();
+  s = scrollTarget(scrollY);
   start();
 })();
