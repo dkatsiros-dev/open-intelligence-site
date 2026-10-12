@@ -1,7 +1,9 @@
-// Background swarm: one point cloud that changes formation as the page scrolls.
+// Background swarm: one graph that changes formation as the page scrolls.
 // Raw WebGL, no dependencies. Every formation is precomputed once into its own GPU
-// buffer; each frame only binds a (from, to) pair and sets a mix uniform. Disabled
-// under prefers-reduced-motion and when WebGL is unavailable.
+// buffer, plus a k-nearest-neighbour edge list (index buffer) so each formation reads
+// as a graph. Each frame only binds a (from, to) pair and sets a mix uniform; lines and
+// points share one vertex shader, so edges morph with their nodes. Lines are drawn
+// first, crisp discs on top. Disabled under prefers-reduced-motion and without WebGL.
 (function () {
   "use strict";
 
@@ -13,15 +15,17 @@
 
   var gl = null;
   try {
-    var opts = { alpha: true, antialias: false, premultipliedAlpha: true, depth: false, stencil: false, powerPreference: "low-power" };
+    var opts = { alpha: true, antialias: true, premultipliedAlpha: true, depth: false, stencil: false, powerPreference: "low-power" };
     gl = canvas.getContext("webgl", opts) || canvas.getContext("experimental-webgl", opts);
   } catch (e) { gl = null; }
   if (!gl) { canvas.hidden = true; return; }
 
-  var N = 2400;
+  var N = 1000;
+  var K = 3; // neighbours per node in each formation's graph
+  var MAX_SEGS = 2500; // per formation
   var ACCENT = [0x1d / 255, 0x35 / 255, 0x57 / 255];
   var INK = [0x16 / 255, 0x18 / 255, 0x1d / 255];
-  var LATTICE = 4; // index of the formation that also draws lines
+  var POINT_ALPHA = 0.92, LINE_ALPHA = 0.42;
   var R = 1.2; // every formation is fitted inside this radius (drift included)
   var DRIFT_MAX = 0.03; // per-axis upper bound of u_drift below
 
@@ -57,13 +61,13 @@
   }
 
   function clusters() { // what it is: many small groups, nodes on their own machines
-    var a = new Float32Array(N * 3), C = 28, c = new Float32Array(C * 3);
+    var a = new Float32Array(N * 3), C = 24, c = new Float32Array(C * 3);
     for (var j = 0; j < C; j++) inSphere(c, j * 3, 1.05);
     for (var i = 0; i < N; i++) {
       var k = (i % C) * 3;
-      a[i * 3] = c[k] + gauss() * 0.05;
-      a[i * 3 + 1] = c[k + 1] + gauss() * 0.05;
-      a[i * 3 + 2] = c[k + 2] + gauss() * 0.05;
+      a[i * 3] = c[k] + gauss() * 0.06;
+      a[i * 3 + 1] = c[k + 1] + gauss() * 0.06;
+      a[i * 3 + 2] = c[k + 2] + gauss() * 0.06;
     }
     return a;
   }
@@ -95,36 +99,15 @@
     return a;
   }
 
-  // Live network: nodes on a jittered 6x6x6 lattice, points gathered at each node.
-  var G = 6, NODES = G * G * G, nodePos = new Float32Array(NODES * 3);
-  function lattice() {
-    var a = new Float32Array(N * 3), step = 2.0 / (G - 1);
-    for (var n = 0; n < NODES; n++) {
-      var gx = n % G, gy = Math.floor(n / G) % G, gz = Math.floor(n / (G * G));
-      nodePos[n * 3] = (-1 + gx * step + gauss() * 0.04) * 0.95;
-      nodePos[n * 3 + 1] = (-1 + gy * step + gauss() * 0.04) * 0.95;
-      nodePos[n * 3 + 2] = (-1 + gz * step + gauss() * 0.04) * 0.95;
-    }
+  function lattice() { // live network: one node per site of a jittered 10x10x10 lattice
+    var a = new Float32Array(N * 3), G = 10, step = 2.0 / (G - 1);
     for (var i = 0; i < N; i++) {
-      var k = (i % NODES) * 3;
-      a[i * 3] = nodePos[k] + gauss() * 0.018;
-      a[i * 3 + 1] = nodePos[k + 1] + gauss() * 0.018;
-      a[i * 3 + 2] = nodePos[k + 2] + gauss() * 0.018;
+      var n = i % (G * G * G), gx = n % G, gy = Math.floor(n / G) % G, gz = Math.floor(n / (G * G));
+      a[i * 3] = (-1 + gx * step + gauss() * 0.012) * 0.95;
+      a[i * 3 + 1] = (-1 + gy * step + gauss() * 0.012) * 0.95;
+      a[i * 3 + 2] = (-1 + gz * step + gauss() * 0.012) * 0.95;
     }
     return a;
-  }
-  function latticeEdges() {
-    var segs = [];
-    for (var n = 0; n < NODES; n++) {
-      var gx = n % G, gy = Math.floor(n / G) % G, gz = Math.floor(n / (G * G));
-      var nb = [gx < G - 1 ? n + 1 : -1, gy < G - 1 ? n + G : -1, gz < G - 1 ? n + G * G : -1];
-      for (var d = 0; d < 3; d++) {
-        if (nb[d] < 0 || rnd() > 0.62) continue;
-        segs.push(nodePos[n * 3], nodePos[n * 3 + 1], nodePos[n * 3 + 2],
-          nodePos[nb[d] * 3], nodePos[nb[d] * 3 + 1], nodePos[nb[d] * 3 + 2]);
-      }
-    }
-    return new Float32Array(segs); // <= 540 segments
   }
 
   function mark() { // join: converge into the wordmark, a ring around a dense core
@@ -148,29 +131,48 @@
     return a;
   }
 
-  // Uniformly shrink a formation (and any extra arrays tied to it) so no point, with
-  // drift added, leaves the radius-R ball. Keeps the projected bounding box predictable.
-  function maxNorm(a) {
-    var m = 0;
-    for (var i = 0; i < a.length; i += 3) m = Math.max(m, Math.hypot(a[i], a[i + 1], a[i + 2]));
-    return m;
-  }
-  function fit(a, extra) {
-    var lim = R - DRIFT_MAX * Math.sqrt(3), m = Math.max(maxNorm(a), extra ? maxNorm(extra) : 0);
-    if (m > lim) {
-      var k = lim / m, i;
-      for (i = 0; i < a.length; i++) a[i] *= k;
-      if (extra) for (i = 0; i < extra.length; i++) extra[i] *= k;
-    }
+  // Uniformly shrink a formation so no point, with drift added, leaves the radius-R
+  // ball. Keeps the projected bounding box predictable.
+  function fit(a) {
+    var lim = R - DRIFT_MAX * Math.sqrt(3), m = 0, i;
+    for (i = 0; i < a.length; i += 3) m = Math.max(m, Math.hypot(a[i], a[i + 1], a[i + 2]));
+    if (m > lim) for (i = 0; i < a.length; i++) a[i] *= lim / m;
     return a;
   }
 
+  // Undirected k-nearest-neighbour graph of one formation, as LINES index pairs.
+  // Brute force (N^2, once at init); duplicate pairs are dropped.
+  function knn(a) {
+    var seen = {}, out = [], bestD = new Float64Array(K), bestJ = new Int32Array(K);
+    for (var i = 0; i < N && out.length < MAX_SEGS * 2; i++) {
+      var xi = a[i * 3], yi = a[i * 3 + 1], zi = a[i * 3 + 2], q, j;
+      for (q = 0; q < K; q++) { bestD[q] = Infinity; bestJ[q] = -1; }
+      for (j = 0; j < N; j++) {
+        if (j === i) continue;
+        var dx = a[j * 3] - xi, dy = a[j * 3 + 1] - yi, dz = a[j * 3 + 2] - zi;
+        var d = dx * dx + dy * dy + dz * dz;
+        if (d >= bestD[K - 1]) continue;
+        for (q = K - 1; q > 0 && bestD[q - 1] > d; q--) { bestD[q] = bestD[q - 1]; bestJ[q] = bestJ[q - 1]; }
+        bestD[q] = d; bestJ[q] = j;
+      }
+      for (q = 0; q < K; q++) {
+        j = bestJ[q];
+        if (j < 0) continue;
+        var key = i < j ? i * N + j : j * N + i;
+        if (seen[key]) continue;
+        seen[key] = 1;
+        out.push(i, j);
+      }
+    }
+    return new Uint16Array(out.slice(0, MAX_SEGS * 2));
+  }
+
   var formations = [cloud(), clusters(), ballVsSwarm(), ring(), lattice(), mark(), disperse()];
-  formations.forEach(function (a, k) { fit(a, k === LATTICE ? nodePos : null); });
-  var edges = latticeEdges(); // built from the fitted nodePos: segments stay inside the ball
+  formations.forEach(fit);
+  var edgeLists = formations.map(knn);
   var F = formations.length;
 
-  // Per-point attributes: drift phase (xyz) and a size/colour seed.
+  // Per-point attributes: drift phase (xyz) and a colour seed.
   var seeds = new Float32Array(N * 4);
   for (var i = 0; i < N; i++) {
     seeds[i * 4] = rnd() * 6.2832; seeds[i * 4 + 1] = rnd() * 6.2832;
@@ -178,78 +180,61 @@
   }
 
   // --- GL setup ---------------------------------------------------------------
-  var COMMON = [
+  // One program for both passes: u_line = 1 draws the edges (solid accent), 0 the nodes.
+  var VS = [
+    "attribute vec3 a_from;",
+    "attribute vec3 a_to;",
+    "attribute vec4 a_seed;",
     "uniform float u_time;",
     "uniform float u_rot;",
     "uniform float u_scale;",
     "uniform float u_aspect;",
     "uniform vec2 u_center;", // box centre, NDC
-    "vec4 project(vec3 p) {",
+    "uniform float u_mix;",
+    "uniform float u_drift;",
+    "uniform float u_size;", // node diameter in device pixels
+    "varying float v_alpha;",
+    "varying float v_ink;",
+    "varying float v_px;", // gl_PointSize
+    "varying float v_rad;", // disc radius, device pixels
+    "void main() {",
+    "  vec3 p = mix(a_from, a_to, u_mix);",
+    "  vec3 ph = a_seed.xyz;",
+    "  p += u_drift * vec3(sin(u_time * 0.37 + ph.x), sin(u_time * 0.29 + ph.y), cos(u_time * 0.33 + ph.z));",
     "  float c = cos(u_rot), s = sin(u_rot);",
     "  p = vec3(c * p.x + s * p.z, p.y, -s * p.x + c * p.z);",
     "  float ct = 0.96, st = 0.28;", // fixed slight downward tilt
     "  p = vec3(p.x, ct * p.y - st * p.z, st * p.y + ct * p.z);",
     "  float w = p.z + 3.4;",
-    "  return vec4(p.x * u_scale / u_aspect + u_center.x * w, p.y * u_scale + u_center.y * w, 0.0, w);",
-    "}"
-  ].join("\n");
-
-  var POINT_VS = [
-    "attribute vec3 a_from;",
-    "attribute vec3 a_to;",
-    "attribute vec4 a_seed;",
-    "uniform float u_mix;",
-    "uniform float u_drift;",
-    "uniform float u_size;",
-    "varying float v_alpha;",
-    "varying float v_ink;",
-    COMMON,
-    "void main() {",
-    "  vec3 p = mix(a_from, a_to, u_mix);",
-    "  vec3 ph = a_seed.xyz;",
-    "  p += u_drift * vec3(sin(u_time * 0.37 + ph.x), sin(u_time * 0.29 + ph.y), cos(u_time * 0.33 + ph.z));",
-    "  vec4 q = project(p);",
-    "  gl_Position = q;",
-    "  float depth = clamp((4.6 - q.w) / 2.4, 0.0, 1.0);", // 1 = near, 0 = far
-    "  gl_PointSize = min(u_size * (0.7 + a_seed.w * 0.9) * (0.75 + 0.5 * depth) * 3.4 / q.w, u_size * 2.2);",
-    "  v_alpha = 0.35 + 0.65 * depth;",
+    "  gl_Position = vec4(p.x * u_scale / u_aspect + u_center.x * w, p.y * u_scale + u_center.y * w, 0.0, w);",
+    "  float depth = clamp((4.6 - w) / 2.4, 0.0, 1.0);", // 1 = near, 0 = far
+    "  v_rad = 0.5 * u_size * (0.8 + 0.4 * depth);",
+    "  v_px = 2.0 * v_rad + 2.0;", // one pixel of room for the antialiased rim
+    "  gl_PointSize = v_px;",
+    "  v_alpha = 0.85 + 0.15 * depth;",
     "  v_ink = step(0.86, a_seed.w);",
     "}"
   ].join("\n");
 
-  var POINT_FS = [
+  var FS = [
     "precision mediump float;",
     "uniform vec3 u_accent;",
     "uniform vec3 u_ink;",
     "uniform float u_alpha;",
+    "uniform float u_line;",
     "uniform vec4 u_clip;", // box in device pixels: xmin, ymin, xmax, ymax
     "varying float v_alpha;",
     "varying float v_ink;",
+    "varying float v_px;",
+    "varying float v_rad;",
     "void main() {",
     "  if (any(lessThan(gl_FragCoord.xy, u_clip.xy)) || any(greaterThan(gl_FragCoord.xy, u_clip.zw))) discard;",
-    "  vec2 d = gl_PointCoord - 0.5;",
-    "  float r = length(d) * 2.0;",
-    "  float a = smoothstep(1.0, 0.25, r) * v_alpha * u_alpha;",
+    "  if (u_line > 0.5) { gl_FragColor = vec4(u_accent * u_alpha, u_alpha); return; }",
+    "  float r = length(gl_PointCoord - 0.5) * v_px;", // device pixels from the centre
+    "  float a = (1.0 - smoothstep(v_rad - 0.5, v_rad + 0.5, r)) * v_alpha * u_alpha;",
     "  if (a < 0.004) discard;",
     "  vec3 col = mix(u_accent, u_ink, v_ink);",
     "  gl_FragColor = vec4(col * a, a);", // premultiplied
-    "}"
-  ].join("\n");
-
-  var LINE_VS = [
-    "attribute vec3 a_pos;",
-    COMMON,
-    "void main() { gl_Position = project(a_pos); }"
-  ].join("\n");
-
-  var LINE_FS = [
-    "precision mediump float;",
-    "uniform vec3 u_accent;",
-    "uniform float u_alpha;",
-    "uniform vec4 u_clip;",
-    "void main() {",
-    "  if (any(lessThan(gl_FragCoord.xy, u_clip.xy)) || any(greaterThan(gl_FragCoord.xy, u_clip.zw))) discard;",
-    "  gl_FragColor = vec4(u_accent * u_alpha, u_alpha);",
     "}"
   ].join("\n");
 
@@ -268,38 +253,38 @@
     if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
     return p;
   }
-  function uniforms(p, names) {
-    var u = {};
-    names.forEach(function (n) { u[n] = gl.getUniformLocation(p, n); });
-    return u;
-  }
-  function staticBuffer(data) {
+  function staticBuffer(target, data) {
     var b = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, b);
-    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+    gl.bindBuffer(target, b);
+    gl.bufferData(target, data, gl.STATIC_DRAW);
     return b;
   }
 
-  var pointProg, lineProg, pu, lu, aFrom, aTo, aSeed, aPos, formBufs, seedBuf, edgeBuf;
-  try {
-    pointProg = program(POINT_VS, POINT_FS);
-    lineProg = program(LINE_VS, LINE_FS);
-  } catch (e) { canvas.hidden = true; return; }
+  var prog;
+  try { prog = program(VS, FS); } catch (e) { canvas.hidden = true; return; }
 
-  pu = uniforms(pointProg, ["u_time", "u_rot", "u_scale", "u_aspect", "u_center", "u_clip", "u_mix", "u_drift", "u_size", "u_accent", "u_ink", "u_alpha"]);
-  lu = uniforms(lineProg, ["u_time", "u_rot", "u_scale", "u_aspect", "u_center", "u_clip", "u_accent", "u_alpha"]);
-  aFrom = gl.getAttribLocation(pointProg, "a_from");
-  aTo = gl.getAttribLocation(pointProg, "a_to");
-  aSeed = gl.getAttribLocation(pointProg, "a_seed");
-  aPos = gl.getAttribLocation(lineProg, "a_pos");
+  var u = {};
+  ["u_time", "u_rot", "u_scale", "u_aspect", "u_center", "u_clip", "u_mix", "u_drift", "u_size",
+    "u_accent", "u_ink", "u_alpha", "u_line"].forEach(function (n) { u[n] = gl.getUniformLocation(prog, n); });
+  var aFrom = gl.getAttribLocation(prog, "a_from");
+  var aTo = gl.getAttribLocation(prog, "a_to");
+  var aSeed = gl.getAttribLocation(prog, "a_seed");
 
-  formBufs = formations.map(staticBuffer);
-  seedBuf = staticBuffer(seeds);
-  edgeBuf = staticBuffer(edges);
-  var edgeVerts = edges.length / 3;
+  var formBufs = formations.map(function (a) { return staticBuffer(gl.ARRAY_BUFFER, a); });
+  var edgeBufs = edgeLists.map(function (e) { return staticBuffer(gl.ELEMENT_ARRAY_BUFFER, e); });
+  var edgeCounts = edgeLists.map(function (e) { return e.length; });
+  staticBuffer(gl.ARRAY_BUFFER, seeds);
+  gl.enableVertexAttribArray(aSeed);
+  gl.vertexAttribPointer(aSeed, 4, gl.FLOAT, false, 0, 0);
+  gl.enableVertexAttribArray(aFrom);
+  gl.enableVertexAttribArray(aTo);
+  gl.useProgram(prog);
+  gl.uniform3fv(u.u_accent, ACCENT); gl.uniform3fv(u.u_ink, INK);
+
   var debug = /[?&]swarmdebug\b/.test(location.search);
-  if (!debug) formations = null; // CPU copies only kept for the layout check below
+  if (!debug) { formations = null; edgeLists = null; } // CPU copies only kept for the layout check below
 
+  var lineRange = gl.getParameter(gl.ALIASED_LINE_WIDTH_RANGE) || [1, 1];
   gl.disable(gl.DEPTH_TEST);
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
@@ -332,6 +317,10 @@
     scale = Math.min(hx * aspect, hy) * Math.sqrt(3.4 * 3.4 - R * R) / R;
     clip = [(box[0] + 1) / 2 * canvas.width, (box[1] + 1) / 2 * canvas.height,
       (box[2] + 1) / 2 * canvas.width, (box[3] + 1) / 2 * canvas.height];
+    gl.uniform1f(u.u_scale, scale); gl.uniform1f(u.u_aspect, aspect);
+    gl.uniform2fv(u.u_center, center); gl.uniform4fv(u.u_clip, clip);
+    gl.uniform1f(u.u_size, (narrow ? 2.6 : 2.8) * dpr);
+    gl.lineWidth(Math.min(Math.max(dpr, lineRange[0]), lineRange[1])); // 1 CSS px where supported
   }
 
   function measure() {
@@ -379,15 +368,18 @@
   }
 
   function bindPair(k) {
-    var k2 = Math.min(k + 1, F - 1);
-    gl.useProgram(pointProg);
     gl.bindBuffer(gl.ARRAY_BUFFER, formBufs[k]);
-    gl.enableVertexAttribArray(aFrom);
     gl.vertexAttribPointer(aFrom, 3, gl.FLOAT, false, 0, 0);
-    gl.bindBuffer(gl.ARRAY_BUFFER, formBufs[k2]);
-    gl.enableVertexAttribArray(aTo);
+    gl.bindBuffer(gl.ARRAY_BUFFER, formBufs[Math.min(k + 1, F - 1)]);
     gl.vertexAttribPointer(aTo, 3, gl.FLOAT, false, 0, 0);
     pairFrom = k;
+  }
+
+  function drawEdges(k, a) {
+    if (a < 0.004 || !edgeCounts[k]) return;
+    gl.uniform1f(u.u_alpha, a);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, edgeBufs[k]);
+    gl.drawElements(gl.LINES, edgeCounts[k], gl.UNSIGNED_SHORT, 0);
   }
 
   function frame(now) {
@@ -405,7 +397,7 @@
 
     // Weight of the wordmark formation: rotation settles so the ring faces the viewer.
     var wMark = Math.max(0, 1 - Math.abs(s - 5));
-    var wLat = Math.max(0, 1 - Math.abs(s - LATTICE) * 1.6);
+    var wLat = Math.max(0, 1 - Math.abs(s - 4) * 1.6);
     rot += dt * 0.06 * (1 - wMark);
     if (wMark > 0) { var face = Math.round(rot / Math.PI) * Math.PI; rot += (face - rot) * (1 - Math.exp(-dt * 2.5)) * wMark; }
 
@@ -413,56 +405,38 @@
     gl.clear(gl.COLOR_BUFFER_BIT);
 
     var wEnd = Math.max(0, s - (F - 2)); // footer: the shell thins out as it disperses
-    var alpha = (narrow ? 0.5 : 0.52) * (1 - 0.45 * wEnd);
+    var fade = 1 - 0.45 * wEnd;
 
-    if (wLat > 0.01 && edgeVerts) {
-      gl.useProgram(lineProg);
-      gl.uniform1f(lu.u_time, t); gl.uniform1f(lu.u_rot, rot);
-      gl.uniform1f(lu.u_scale, scale); gl.uniform1f(lu.u_aspect, aspect);
-      gl.uniform2fv(lu.u_center, center); gl.uniform4fv(lu.u_clip, clip);
-      gl.uniform3fv(lu.u_accent, ACCENT); gl.uniform1f(lu.u_alpha, 0.09 * wLat * wLat);
-      gl.disableVertexAttribArray(aFrom); gl.disableVertexAttribArray(aTo); gl.disableVertexAttribArray(aSeed);
-      gl.bindBuffer(gl.ARRAY_BUFFER, edgeBuf);
-      gl.enableVertexAttribArray(aPos);
-      gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 0, 0);
-      gl.drawArrays(gl.LINES, 0, edgeVerts);
-      gl.disableVertexAttribArray(aPos);
-      pairFrom = -1; // attribute state was touched; rebind below
-    }
-
-    if (k !== pairFrom) {
-      bindPair(k);
-      gl.bindBuffer(gl.ARRAY_BUFFER, seedBuf);
-      gl.enableVertexAttribArray(aSeed);
-      gl.vertexAttribPointer(aSeed, 4, gl.FLOAT, false, 0, 0);
-    }
-    gl.useProgram(pointProg);
-    gl.uniform1f(pu.u_time, t); gl.uniform1f(pu.u_rot, rot);
-    gl.uniform1f(pu.u_scale, scale); gl.uniform1f(pu.u_aspect, aspect);
-    gl.uniform2fv(pu.u_center, center); gl.uniform4fv(pu.u_clip, clip);
-    gl.uniform1f(pu.u_mix, f);
+    if (k !== pairFrom) bindPair(k);
+    gl.uniform1f(u.u_time, t); gl.uniform1f(u.u_rot, rot);
+    gl.uniform1f(u.u_mix, f);
     drift = Math.min(DRIFT_MAX, 0.018 * (1 - 0.6 * wMark) + 0.012 * (1 - wLat));
-    gl.uniform1f(pu.u_drift, drift);
-    gl.uniform1f(pu.u_size, (narrow ? 2.6 : 3.0) * dpr);
-    gl.uniform3fv(pu.u_accent, ACCENT); gl.uniform3fv(pu.u_ink, INK);
-    gl.uniform1f(pu.u_alpha, alpha);
+    gl.uniform1f(u.u_drift, drift);
+
+    // Edges: the outgoing graph fades out while the incoming one fades in; both ride
+    // the interpolated node positions, so mid-glide (stretched) edges are faintest.
+    gl.uniform1f(u.u_line, 1);
+    drawEdges(k, LINE_ALPHA * fade * (1 - f) * (1 - f));
+    drawEdges(k + 1, LINE_ALPHA * fade * f * f);
+
+    gl.uniform1f(u.u_line, 0);
+    gl.uniform1f(u.u_alpha, POINT_ALPHA * fade);
     gl.drawArrays(gl.POINTS, 0, N);
-    pose = { k: k, f: f };
+    pose.k = k; pose.f = f;
 
     raf = requestAnimationFrame(frame);
   }
 
-  // ?swarmdebug: CPU mirror of POINT_VS/COMMON so tests can check where points land.
-  var pose = null;
+  // ?swarmdebug: CPU mirror of VS so tests can check where points land.
+  var pose = { k: -1, f: 0 };
   if (debug) window.__swarm = {
     box: function () { return box.slice(); },
-    points: function () { // NDC [x, y] of every point, plus edge endpoints when lines show
-      if (!pose) return [];
+    edges: function () { return edgeCounts.map(function (c) { return c / 2; }); },
+    points: function () { // NDC [x, y] of every point (edge endpoints are points)
+      if (pose.k < 0) return [];
       var A = formations[pose.k], B = formations[Math.min(pose.k + 1, F - 1)], out = [];
       function proj(x, y, z, ph) {
-        if (ph) {
-          x += drift * Math.sin(t * 0.37 + ph[0]); y += drift * Math.sin(t * 0.29 + ph[1]); z += drift * Math.cos(t * 0.33 + ph[2]);
-        }
+        x += drift * Math.sin(t * 0.37 + ph[0]); y += drift * Math.sin(t * 0.29 + ph[1]); z += drift * Math.cos(t * 0.33 + ph[2]);
         var c = Math.cos(rot), sn = Math.sin(rot), px = c * x + sn * z, pz = -sn * x + c * z;
         var py = 0.96 * y - 0.28 * pz, qz = 0.28 * y + 0.96 * pz, w = qz + 3.4;
         return [px * scale / aspect / w + center[0], py * scale / w + center[1]];
@@ -472,7 +446,6 @@
         out.push(proj(A[o] + (B[o] - A[o]) * pose.f, A[o + 1] + (B[o + 1] - A[o + 1]) * pose.f,
           A[o + 2] + (B[o + 2] - A[o + 2]) * pose.f, [seeds[i * 4], seeds[i * 4 + 1], seeds[i * 4 + 2]]));
       }
-      for (var e = 0; e < edges.length; e += 3) out.push(proj(edges[e], edges[e + 1], edges[e + 2], null));
       return out;
     }
   };

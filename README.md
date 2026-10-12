@@ -29,6 +29,13 @@ export CLOUDFLARE_API_TOKEN=...  CLOUDFLARE_ACCOUNT_ID=...
 npx wrangler pages deploy . --project-name open-intelligence --branch main
 ```
 
+## Changelog rule
+
+Every commit updates [CHANGELOG.md](CHANGELOG.md): one bullet per change under `## Unreleased` (or
+today's dated section), with the short hash where known. The pre-commit hook in
+`scripts/git-hooks/pre-commit` rejects commits that stage files without touching CHANGELOG.md; install it
+once per clone with `sh scripts/install-hooks.sh`.
+
 ## Related
 
 - Main project (coordinator, node library and CLI): `github.com/dkatsiros-dev/open-intelligence`

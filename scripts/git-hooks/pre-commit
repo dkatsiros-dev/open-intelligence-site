@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+# Every commit updates CHANGELOG.md (see README, "Changelog rule").
+# Installed by scripts/install-hooks.sh. Bypass only in emergencies: git commit --no-verify.
+staged=$(git diff --cached --name-only --diff-filter=ACMRD)
+[ -z "$staged" ] && exit 0
+if ! printf '%s\n' "$staged" | grep -qx 'CHANGELOG.md'; then
+  echo "pre-commit: this commit does not update CHANGELOG.md; add a bullet under '## Unreleased' or today's section." >&2
+  exit 1
+fi
