@@ -58,7 +58,7 @@ export async function onRequestPost({ request, env }) {
   try {
     await githubAdd(ghToken, email, { note, ts, ua, ip: (await sha256(ip)).slice(0, 16) });
   } catch {
-    return json({ ok: false, error: "unavailable" }, 502);
+    return json({ ok: false, error: "unavailable" }, 503);
   }
   return json({ ok: true });
 }

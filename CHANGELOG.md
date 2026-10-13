@@ -13,6 +13,9 @@ Every commit adds a line here (see README, "Changelog rule").
 - `login.html` (served at /login): sign-in form plus a waitlist form (email, honeypot, consent).
 - Waitlist store fallback while KV is unbound: one issue per address in a private GitHub repo, deduped by title. `wrangler.toml` lists the secret names (values live only in Cloudflare).
 
+### Fixed
+- A failed waitlist write answers 503 JSON instead of 502 (Cloudflare replaced the 502 body with its own error page).
+
 ## 2026-10-13
 
 ### Added
