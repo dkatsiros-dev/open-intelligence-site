@@ -17,7 +17,19 @@
     *, *::before, *::after { box-sizing: border-box; }
     html { -webkit-text-size-adjust: 100%; }
     body { margin: 0; background: #fff; color: var(--ink); font: 400 1.0625rem/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
-    main { max-width: 26rem; margin: 0 auto; padding: clamp(2.5rem, 10vh, 6rem) 1.25rem 3rem; }
+    /* The card sits on near-opaque white above the swarm canvas (z-index -1). */
+    main {
+      position: relative; z-index: 1; max-width: 26rem; margin: clamp(1.5rem, 8vh, 5rem) auto 3rem;
+      padding: 2rem 1.25rem 2.5rem; width: calc(100% - 2rem);
+      background: rgba(255, 255, 255, 0.94); box-shadow: 0 0 0 0.6rem rgba(255, 255, 255, 0.94);
+    }
+    /* Swarm (swarm.js, data-mode="idle"): full-bleed at low opacity behind the card; on wide
+       screens the card moves to the site's left text edge and swarm.js adds .swarm-side and
+       places the canvas right of it. */
+    .swarm { position: fixed; top: 0; left: 0; z-index: -1; width: 100%; height: 100vh; height: 100lvh; pointer-events: none; opacity: 0.35; }
+    .swarm-side .swarm { opacity: 1; }
+    .swarm[hidden] { display: none; }
+    @media (min-width: 1100px) { main { margin-left: max(40px, 50vw - 520px); } }
     .wordmark { display: inline-flex; align-items: center; gap: 0.55rem; font: 500 1.125rem/1 var(--serif); color: var(--ink); }
     .wordmark svg { width: 20px; height: 20px; flex: none; }
     h1 { font: 500 clamp(1.6rem, 6vw, 2rem)/1.2 var(--serif); letter-spacing: -0.01em; margin: 2rem 0 0.5rem; }
@@ -40,6 +52,7 @@
   </style>
 </head>
 <body>
+  <canvas id="swarm" class="swarm" data-mode="idle" data-text="main" aria-hidden="true"></canvas>
   <main>
     <span class="wordmark">
       <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="10.5" fill="none" stroke="#1d3557" stroke-width="2.5"/><circle cx="16" cy="16" r="3" fill="#1d3557"/></svg>
@@ -127,7 +140,11 @@
       status(wl, "", "Sending…");
       post("/api/waitlist", { email: wl.elements.email.value.trim(), website: wl.elements.website.value })
         .then(function (res) {
-          if (res.r.ok && res.j.ok) { wl.reset(); status(wl, "ok", "Thanks. You are on the list."); return; }
+          if (res.r.ok && res.j.ok) {
+            wl.reset();
+            status(wl, "ok", res.j.status === "already" ? "You are already on the list." : "Thanks. You are on the list.");
+            return;
+          }
           status(wl, "err", ERRORS[res.j.error] || "Something went wrong. Please try again later.");
         })
         .catch(function () { status(wl, "err", "Could not reach the server. Please try again later."); })
@@ -135,5 +152,6 @@
     });
   })();
   </script>
+  <script src="/swarm.js" defer></script>
 </body>
 </html>

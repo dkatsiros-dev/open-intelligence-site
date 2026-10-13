@@ -9,7 +9,11 @@ Every commit adds a line here (see README, "Changelog rule").
 - Login gate: `functions/_middleware.js` requires a signed `oi_session` cookie (HMAC-SHA256 over {u, exp}, 30 days) for every path except /login, /api/login, /api/logout, /api/waitlist, /favicon.svg and /robots.txt; pages redirect to /login, other /api/* paths answer 401; gated responses are `private, no-store` and `noindex`. `robots.txt` disallows everything.
 - `POST /api/login` (PBKDF2-SHA256 user list from a Pages secret, constant-time compare, 10 attempts per IP per 15 min, 1 s delay on failure) and `/api/logout`.
 
+### Changed
+- Waitlist stored in Cloudflare KV (namespace OI_WAITLIST, bound in `wrangler.toml`), one key per address; repeats answer `{status: "already"}`; the 5/hour/IP limit lives in KV with a TTL. The GitHub-issues store is gone. `scripts/waitlist_export.sh` prints the list as CSV.
+
 ### Added
+- Login page swarm: `swarm.js` `data-mode="idle"` (cloud ↔ lattice on a 20 s timer) in a right-hand box on wide screens, low-opacity full-bleed behind the card below 1100px; `/swarm.js` is public.
 - `login.html` (served at /login): sign-in form plus a waitlist form (email, honeypot, consent).
 - Waitlist store fallback while KV is unbound: one issue per address in a private GitHub repo, deduped by title. `wrangler.toml` lists the secret names (values live only in Cloudflare).
 

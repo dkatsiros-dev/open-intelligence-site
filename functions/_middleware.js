@@ -1,12 +1,13 @@
 // Login gate for the whole site (static pages, assets and functions).
-// Public: the login page, the login/logout/waitlist APIs, favicon and robots.txt.
+// Public: the login page, the login/logout/waitlist APIs, swarm.js (the login background),
+// favicon and robots.txt.
 // Everything else needs a valid oi_session cookie (see _shared/session.js): without one,
 // /api/* answers 401 JSON and pages redirect to /login?next=<path>. Gated responses are
 // marked private/no-store and noindex.
 
 import { COOKIE, verify, readCookie, json } from "./_shared/session.js";
 
-const PUBLIC = new Set(["/login", "/login.html", "/api/login", "/api/logout", "/api/waitlist", "/favicon.svg", "/robots.txt"]);
+const PUBLIC = new Set(["/login", "/login.html", "/api/login", "/api/logout", "/api/waitlist", "/swarm.js", "/favicon.svg", "/robots.txt"]);
 
 export async function onRequest({ request, env, next }) {
   const url = new URL(request.url);

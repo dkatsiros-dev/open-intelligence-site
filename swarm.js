@@ -4,11 +4,15 @@
 // as a graph. Each frame only binds a (from, to) pair and sets a mix uniform; lines and
 // points share one vertex shader, so edges morph with their nodes. Lines are drawn
 // first, crisp discs on top. Disabled under prefers-reduced-motion and without WebGL.
+// <canvas data-mode="idle"> (login page): a single cloud <-> lattice pair, mixed 0 -> 1 -> 0
+// on a timer (IDLE_PERIOD) instead of by scroll; data-text names the text columns to avoid.
 (function () {
   "use strict";
 
   var canvas = document.getElementById("swarm");
   if (!canvas) return;
+  var idle = canvas.getAttribute("data-mode") === "idle";
+  var IDLE_PERIOD = 20; // s, one full cloud -> lattice -> cloud cycle
 
   var reduce = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
   if (reduce && reduce.matches) { canvas.hidden = true; return; }
@@ -167,7 +171,9 @@
     return new Uint16Array(out.slice(0, MAX_SEGS * 2));
   }
 
-  var formations = [cloud(), clusters(), ballVsSwarm(), ring(), lattice(), mark(), disperse()];
+  var formations = idle ? [cloud(), lattice()]
+    : [cloud(), clusters(), ballVsSwarm(), ring(), lattice(), mark(), disperse()];
+  var LAT = idle ? 1 : 4, MARK = idle ? -9 : 5; // formation indices that steer drift and rotation
   formations.forEach(fit);
   var edgeLists = formations.map(knn);
   var F = formations.length;
@@ -292,7 +298,7 @@
 
   // --- Layout + scroll mapping -----------------------------------------------
   // One anchor per formation: the scroll offset at which that formation is fully formed.
-  var anchorEls = [
+  var anchorEls = idle ? [] : [
     document.querySelector(".hero"),
     document.getElementById("what"),
     document.getElementById("why"),
@@ -307,7 +313,7 @@
   // so no prose ever sits over it (no CSS mask: Safari composites masked WebGL layers through
   // an extra resampling pass). Otherwise it covers the viewport at low opacity behind the
   // text backdrops (styles.css). Formations live in a box (NDC) inside the canvas.
-  var TEXT_COLS = ".hero .wrap > *, .split > *, .teaser > *, footer .wrap > *";
+  var TEXT_COLS = canvas.getAttribute("data-text") || ".hero .wrap > *, .split > *, .teaser > *, footer .wrap > *";
   var SIDE_MIN = 320, SIDE_GAP = 32; // CSS px
   var BOX_SIDE = [-0.94, -0.86, 0.94, 0.86], BOX_FULL = [-0.9, -0.86, 0.9, 0.86];
   var box = BOX_SIDE, center = [0, 0], scale = 1, clip = [0, 0, 1, 1];
@@ -417,23 +423,27 @@
     last = now;
     t += dt;
 
-    if (scrolled) { scrolled = false; scrollY = window.pageYOffset; }
-    var target = scrollTarget(scrollY);
-    if (pairOf(target) !== pairOf(s)) s = target;
-    else s += (target - s) * (1 - Math.exp(-elapsed / TAU));
-    if (Math.abs(target - s) < 1e-4) s = target;
+    if (idle) {
+      s = (1 - Math.cos(t * 2 * Math.PI / IDLE_PERIOD)) / 2;
+    } else {
+      if (scrolled) { scrolled = false; scrollY = window.pageYOffset; }
+      var target = scrollTarget(scrollY);
+      if (pairOf(target) !== pairOf(s)) s = target;
+      else s += (target - s) * (1 - Math.exp(-elapsed / TAU));
+      if (Math.abs(target - s) < 1e-4) s = target;
+    }
     var k = pairOf(s), f = ease(s - k);
 
     // Weight of the wordmark formation: rotation settles so the ring faces the viewer.
-    var wMark = Math.max(0, 1 - Math.abs(s - 5));
-    var wLat = Math.max(0, 1 - Math.abs(s - 4) * 1.6);
+    var wMark = Math.max(0, 1 - Math.abs(s - MARK));
+    var wLat = Math.max(0, 1 - Math.abs(s - LAT) * 1.6);
     rot += dt * 0.06 * (1 - wMark);
     if (wMark > 0) { var face = Math.round(rot / Math.PI) * Math.PI; rot += (face - rot) * (1 - Math.exp(-dt * 2.5)) * wMark; }
 
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
-    var wEnd = Math.max(0, s - (F - 2)); // footer: the shell thins out as it disperses
+    var wEnd = idle ? 0 : Math.max(0, s - (F - 2)); // footer: the shell thins out as it disperses
     var fade = 1 - 0.45 * wEnd;
 
     if (k !== pairFrom) bindPair(k);
