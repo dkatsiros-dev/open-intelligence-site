@@ -2,9 +2,14 @@ name = "open-intelligence"
 pages_build_output_dir = "."
 compatibility_date = "2026-10-12"
 
-# Waitlist storage for functions/api/waitlist.js. Not bound yet: creating the namespace needs a
-# token with Workers KV Storage:Edit. Until then GET /api/waitlist reports {open: false} and the
-# page shows the "Request an invite" GitHub link instead of the form.
+# Secrets (set with `wrangler pages secret put <NAME> --project-name open-intelligence`, never here):
+#   SESSION_SECRET     HMAC key for the oi_session login cookie (functions/_shared/session.js)
+#   AUTH_USERS         JSON [{u, salt, hash}] for /api/login (PBKDF2-SHA256, 100k iterations)
+#   WAITLIST_GH_TOKEN  GitHub token that can open issues in dkatsiros-dev/open-intelligence-waitlist
+#
+# Waitlist KV storage for functions/api/waitlist.js. Not bound yet: creating the namespace needs a
+# token with Workers KV Storage:Edit. Until then the waitlist is stored as GitHub issues in the
+# private repo above. Binding KV switches the function to KV.
 # [[kv_namespaces]]
 # binding = "OI_WAITLIST"
 # id = "<namespace id>"

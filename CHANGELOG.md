@@ -5,6 +5,14 @@ Every commit adds a line here (see README, "Changelog rule").
 
 ## Unreleased
 
+### Security
+- Login gate: `functions/_middleware.js` requires a signed `oi_session` cookie (HMAC-SHA256 over {u, exp}, 30 days) for every path except /login, /api/login, /api/logout, /api/waitlist, /favicon.svg and /robots.txt; pages redirect to /login, other /api/* paths answer 401; gated responses are `private, no-store` and `noindex`. `robots.txt` disallows everything.
+- `POST /api/login` (PBKDF2-SHA256 user list from a Pages secret, constant-time compare, 10 attempts per IP per 15 min, 1 s delay on failure) and `/api/logout`.
+
+### Added
+- `login.html` (served at /login): sign-in form plus a waitlist form (email, honeypot, consent).
+- Waitlist store fallback while KV is unbound: one issue per address in a private GitHub repo, deduped by title. `wrangler.toml` lists the secret names (values live only in Cloudflare).
+
 ## 2026-10-13
 
 ### Added

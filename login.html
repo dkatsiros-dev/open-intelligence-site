@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Open Intelligence — sign in</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <style>
+    /* Self-contained: styles.css sits behind the login gate. Same tokens as the site. */
+    :root {
+      --ink: #16181d; --ink-2: #3d424b; --ink-3: #6b707a; --rule: #e6e6e3;
+      --accent: #1d3557;
+      --serif: ui-serif, "Iowan Old Style", "Charter", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+      --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body { margin: 0; background: #fff; color: var(--ink); font: 400 1.0625rem/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
+    main { max-width: 26rem; margin: 0 auto; padding: clamp(2.5rem, 10vh, 6rem) 1.25rem 3rem; }
+    .wordmark { display: inline-flex; align-items: center; gap: 0.55rem; font: 500 1.125rem/1 var(--serif); color: var(--ink); }
+    .wordmark svg { width: 20px; height: 20px; flex: none; }
+    h1 { font: 500 clamp(1.6rem, 6vw, 2rem)/1.2 var(--serif); letter-spacing: -0.01em; margin: 2rem 0 0.5rem; }
+    .lede { color: var(--ink-2); margin: 0 0 2rem; }
+    form { display: grid; gap: 0.4rem; }
+    label { font-size: 0.875rem; color: var(--ink-2); }
+    input { font: 400 1rem/1.4 var(--sans); color: var(--ink); padding: 0.6rem 0.75rem; margin: 0 0 0.6rem; border: 1px solid #c9cbd0; border-radius: 3px; background: #fff; width: 100%; }
+    input:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+    button { justify-self: start; font: 500 0.9375rem/1 var(--sans); background: var(--accent); color: #fff; border: 0; border-radius: 3px; padding: 0.8rem 1.2rem; cursor: pointer; }
+    button[disabled] { opacity: 0.6; cursor: default; }
+    button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+    hr { border: 0; border-top: 1px solid var(--rule); margin: 2.5rem 0 2rem; }
+    h2 { font: 500 1.2rem/1.3 var(--serif); margin: 0 0 0.4rem; }
+    .muted { color: var(--ink-3); font-size: 0.9375rem; margin: 0 0 1.25rem; }
+    .hp { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+    .consent, .status { font-size: 0.8125rem; color: var(--ink-3); margin: 0.4rem 0 0; }
+    .status:empty { display: none; }
+    .status.ok { color: #2f6b4f; }
+    .status.err { color: #9b2c2c; }
+  </style>
+</head>
+<body>
+  <main>
+    <span class="wordmark">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="10.5" fill="none" stroke="#1d3557" stroke-width="2.5"/><circle cx="16" cy="16" r="3" fill="#1d3557"/></svg>
+      Open Intelligence
+    </span>
+    <h1>Sign in</h1>
+    <p class="lede">A volunteer network where independently owned machines do verifiable research together. Private preview.</p>
+
+    <form id="login" novalidate>
+      <label for="username">Username</label>
+      <input id="username" name="username" type="text" required autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64">
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" required autocomplete="current-password" maxlength="256">
+      <button type="submit">Sign in</button>
+      <p class="status" role="status" aria-live="polite"></p>
+    </form>
+
+    <hr>
+
+    <h2>Not invited yet?</h2>
+    <p class="muted">Leave your email and we'll let you know when nodes open.</p>
+    <form id="waitlist">
+      <label for="wl-email">Email</label>
+      <input id="wl-email" name="email" type="email" required maxlength="254" autocomplete="email">
+      <div class="hp" aria-hidden="true"><label for="wl-website">Leave this empty</label><input id="wl-website" name="website" type="text" tabindex="-1" autocomplete="off"></div>
+      <button type="submit">Join the waitlist</button>
+      <p class="consent">We keep your email only to let you know when nodes open. We never share it, and we delete it when you ask.</p>
+      <p class="status" role="status" aria-live="polite"></p>
+    </form>
+  </main>
+  <script>
+  (function () {
+    "use strict";
+    function status(form, cls, text) {
+      var el = form.querySelector(".status");
+      el.className = "status" + (cls ? " " + cls : "");
+      el.textContent = text;
+    }
+    function post(url, data) {
+      return fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(data),
+        credentials: "same-origin"
+      }).then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (j) { return { r: r, j: j }; });
+      });
+    }
+    // Only same-site paths: "/x" but never "//host" or "/\host".
+    function nextPath() {
+      var n = new URLSearchParams(location.search).get("next") || "/";
+      return /^\/(?![\/\\])/.test(n) ? n : "/";
+    }
+
+    var login = document.getElementById("login");
+    login.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var btn = login.querySelector("button");
+      var u = login.elements.username.value.trim(), p = login.elements.password.value;
+      if (!u || !p) { status(login, "err", "Enter your username and password."); return; }
+      btn.disabled = true;
+      status(login, "", "Signing in…");
+      post("/api/login", { username: u, password: p })
+        .then(function (res) {
+          if (res.r.status === 204) { status(login, "ok", "Signed in."); location.replace(nextPath()); return; }
+          login.elements.password.value = "";
+          status(login, "err", res.r.status === 429
+            ? "Too many attempts. Please wait 15 minutes."
+            : res.r.status === 401 ? "Wrong username or password." : "Sign-in is unavailable right now.");
+        })
+        .catch(function () { status(login, "err", "Could not reach the server. Please try again."); })
+        .then(function () { btn.disabled = false; });
+    });
+
+    var ERRORS = {
+      invalid_email: "That email address does not look right.",
+      rate_limited: "Too many requests from this network. Please try again in an hour.",
+      closed: "The waitlist is closed right now. Please try again later."
+    };
+    var wl = document.getElementById("waitlist");
+    wl.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var btn = wl.querySelector("button");
+      btn.disabled = true;
+      status(wl, "", "Sending…");
+      post("/api/waitlist", { email: wl.elements.email.value.trim(), website: wl.elements.website.value })
+        .then(function (res) {
+          if (res.r.ok && res.j.ok) { wl.reset(); status(wl, "ok", "Thanks. You are on the list."); return; }
+          status(wl, "err", ERRORS[res.j.error] || "Something went wrong. Please try again later.");
+        })
+        .catch(function () { status(wl, "err", "Could not reach the server. Please try again later."); })
+        .then(function () { btn.disabled = false; });
+    });
+  })();
+  </script>
+</body>
+</html>
