@@ -11,6 +11,7 @@ Every commit adds a line here (see README, "Changelog rule").
 
 ### Changed
 - Waitlist stored in Cloudflare KV (namespace OI_WAITLIST, bound in `wrangler.toml`), one key per address; repeats answer `{status: "already"}`; the 5/hour/IP limit lives in KV with a TTL. The GitHub-issues store is gone. `scripts/waitlist_export.sh` prints the list as CSV.
+- README: "How the waitlist works" (store, checks, export, deleting an entry); Contents lists the login page, functions and export script.
 
 ### Added
 - Login page swarm: `swarm.js` `data-mode="idle"` (cloud ↔ lattice on a 20 s timer) in a right-hand box on wide screens, low-opacity full-bleed behind the card below 1100px; `/swarm.js` is public.

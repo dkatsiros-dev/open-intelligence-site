@@ -11,6 +11,8 @@ Live at **https://open-intelligence.space** (whitepaper: [/whitepaper.html](http
   `https://api.open-intelligence.space`.
 - `swarm.js` — WebGL background animation (disabled for reduced motion).
 - `whitepaper.html` — the whitepaper.
+- `login.html`, `functions/` — the login gate and the waitlist (Cloudflare Pages Functions).
+- `scripts/waitlist_export.sh` — prints the waitlist as CSV.
 
 No build step and no external assets: the files are served as-is.
 
@@ -28,6 +30,21 @@ Hosted on Cloudflare Pages, project `open-intelligence` (config in `wrangler.tom
 export CLOUDFLARE_API_TOKEN=...  CLOUDFLARE_ACCOUNT_ID=...
 npx wrangler pages deploy . --project-name open-intelligence --branch main
 ```
+
+## How the waitlist works
+
+The login page (`/login`) is public and has a waitlist form that posts to a Pages Function,
+`functions/api/waitlist.js`. The function checks the email address, drops bots that fill the hidden
+honeypot field, refuses requests from other origins and allows at most 5 sign-ups per IP per hour
+(counted in KV under a hashed IP that expires after two hours; IPs themselves are never stored).
+Each address is stored once in the Cloudflare KV namespace `OI_WAITLIST` under the key
+`email:<address>`, with the sign-up time, the optional note, the browser user agent and a short IP
+hash; signing up again changes nothing and answers `{"status": "already"}`. A second key,
+`by_ts:<time>:<hash>`, keeps the list in sign-up order. `scripts/waitlist_export.sh` prints the
+whole list as CSV through the Cloudflare API (it reads `CF_API_TOKEN` and `CF_ACCOUNT_ID` from the
+environment). No third-party service sees the addresses. To delete an entry, remove both of its keys,
+e.g. `npx wrangler kv key delete --namespace-id <id> "email:<address>" --remote` and the same for
+the `index_key` column of the export.
 
 ## Changelog rule
 
